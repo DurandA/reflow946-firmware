@@ -29,6 +29,7 @@
 #include "console/console.h"
 #include "services/gap/ble_svc_gap.h"
 #include "bler946.h"
+#include "ui.h"
 #include "segments.h"
 
 static const char *tag = "NimBLE_BLE_Reflow946";
@@ -303,4 +304,5 @@ void app_main(void)
     nimble_port_freertos_init(blehr_host_task);
 
     segments_init();
+    ui_init();
 }
