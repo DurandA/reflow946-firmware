@@ -17,8 +17,8 @@
  * under the License.
  */
 
-#ifndef H_BLEHR_SENSOR_
-#define H_BLEHR_SENSOR_
+#ifndef H_BLER946_
+#define H_BLER946_
 
 #include "nimble/ble.h"
 #include "modlog/modlog.h"

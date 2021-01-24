@@ -24,7 +24,7 @@
 #include "host/ble_uuid.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
-#include "blehr_sens.h"
+#include "bler946.h"
 
 static const char *manuf_name = "Apache Mynewt ESP32 devkitC";
 static const char *model_num = "Mynewt HR Sensor demo";

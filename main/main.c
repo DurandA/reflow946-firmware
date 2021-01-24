@@ -28,9 +28,9 @@
 #include "host/util/util.h"
 #include "console/console.h"
 #include "services/gap/ble_svc_gap.h"
-#include "blehr_sens.h"
+#include "bler946.h"
 
-static const char *tag = "NimBLE_BLE_HeartRate";
+static const char *tag = "NimBLE_BLE_Reflow946";
 
 static xTimerHandle blehr_tx_timer;
 
