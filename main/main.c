@@ -20,6 +20,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "freertos/FreeRTOSConfig.h"
+#include "driver/spi_master.h"
 /* BLE */
 #include "esp_nimble_hci.h"
 #include "nimble/nimble_port.h"
@@ -31,6 +32,7 @@
 #include "bler946.h"
 #include "ui.h"
 #include "segments.h"
+#include "max31855.h"
 
 static const char *tag = "NimBLE_BLE_Reflow946";
 
@@ -305,4 +307,19 @@ void app_main(void)
 
     segments_init();
     ui_init();
+
+    spi_device_handle_t spi;
+    max31855_init(&spi);
+    max31855_data_t data;
+    const TickType_t xDelay = 1000 / portTICK_PERIOD_MS;
+    for( ;; )
+    {
+        max31855_read(spi, &data);
+        double centigrade = data.thermocouple_temp;
+        // LSB = 0.25 degrees C
+        centigrade *= 0.25;
+
+        ESP_LOGI(tag, "Temperature: %f", centigrade);
+        vTaskDelay(xDelay);
+    }
 }
