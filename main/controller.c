@@ -15,17 +15,19 @@ static const char *tag = "Controller";
 #define CLAMP(x, low, high)  (((x) > (high)) ? (high) : (((x) < (low)) ? (low) : (x)))
 
 #define GPIO_INPUT_ZEROCROSS  4
-#define GPIO_OUTPUT_FIRING    33
+#define GPIO_OUTPUT_OPTOCOUPLER 33
 #define ESP_INTR_FLAG_DEFAULT 0
 
-atomic_int temperature;
+static atomic_int temperature;
+static atomic_int target_temperature;
 
-TaskHandle_t firing_handle;
+#ifndef CONFIG_ZERO_CROSSING_DRIVER
+static TaskHandle_t firing_handle;
 
-rmt_config_t firing_conf;
-rmt_item32_t firing_pulse;
+static rmt_config_t firing_conf;
+static rmt_item32_t firing_pulse;
 
-atomic_uint pulse_delay;
+static atomic_uint pulse_delay;
 
 static void IRAM_ATTR zerocross_isr_handler() {
     static unsigned long last_time = 0;
@@ -55,9 +57,14 @@ void firing_task(void *param) {
         ESP_ERROR_CHECK(rmt_write_items(firing_conf.channel, &firing_pulse, 1, 0));
     }
 }
+#endif // !CONFIG_ZERO_CROSSING_DRIVER
 
 int get_temperature() {
     return atomic_load(&temperature);
+}
+
+void set_target_temperature(int value) {
+    atomic_store(&target_temperature, value);
 }
 
 void controller_task(void *param) {
@@ -72,6 +79,21 @@ void controller_task(void *param) {
         atomic_store(&temperature, centigrade);
         ui_display_temperature(centigrade);
         ESP_LOGI(tag, "Temperature: %i", centigrade);
+        int target = atomic_load(&target_temperature);
+#ifdef CONFIG_ZERO_CROSSING_DRIVER
+        if (centigrade < target) {
+            gpio_set_level(GPIO_OUTPUT_OPTOCOUPLER, 1);
+        } else {
+            gpio_set_level(GPIO_OUTPUT_OPTOCOUPLER, 0);
+        }
+#else
+        if (centigrade < target) {
+            // pulse_delay should be clamped between 1400 and 9600 @ 100Hz
+            atomic_store(&pulse_delay, 1400);
+        } else {
+            atomic_store(&pulse_delay, 0);
+        }
+#endif
         vTaskDelay(xDelay);
     }
 }
@@ -79,12 +101,22 @@ void controller_task(void *param) {
 void controller_start (spi_device_handle_t *spi) {
     static TaskHandle_t controller_handle;
     xTaskCreate(&controller_task, "controller_task", 8192, spi, 1, &controller_handle);
+#ifndef CONFIG_ZERO_CROSSING_DRIVER
     static TaskHandle_t firing_handle;
     xTaskCreate(&firing_task, "firing_task", 8192, NULL, configMAX_PRIORITIES-1, &firing_handle);
+#endif
 }
 
 void controller_init (void) {
-    gpio_config_t io_conf;
+    atomic_init(&temperature, 0);
+    atomic_init(&target_temperature, 0);
+#ifdef CONFIG_ZERO_CROSSING_DRIVER
+    gpio_config_t opto_io = {0};
+    opto_io.pin_bit_mask = 1ULL<<GPIO_OUTPUT_OPTOCOUPLER;
+    opto_io.mode = GPIO_MODE_OUTPUT;
+    gpio_config(&opto_io);
+#else
+    gpio_config_t io_conf = {0};
     io_conf.intr_type = GPIO_PIN_INTR_NEGEDGE;
     io_conf.pin_bit_mask = 1ULL<<GPIO_INPUT_ZEROCROSS;
     io_conf.mode = GPIO_MODE_INPUT;
@@ -93,7 +125,7 @@ void controller_init (void) {
 
     firing_conf.rmt_mode = RMT_MODE_TX;
     firing_conf.channel = RMT_CHANNEL_0;
-    firing_conf.gpio_num = GPIO_OUTPUT_FIRING;
+    firing_conf.gpio_num = GPIO_OUTPUT_OPTOCOUPLER;
     firing_conf.mem_block_num = 1;
     firing_conf.tx_config.loop_en = 0;
     firing_conf.tx_config.carrier_en = 0;
@@ -110,4 +142,5 @@ void controller_init (void) {
     firing_pulse.level1 = 1;
 
     atomic_init(&pulse_delay, 0);
+#endif
 }

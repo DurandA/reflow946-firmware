@@ -1,0 +1,9 @@
+menu "Reflow946"
+
+config ZERO_CROSSING_DRIVER
+	bool "Use zero-crossing TRAC driver"
+	help
+	  Use an optocoupler with zero-crossing circuit (e.g. MOC3041).
+	  Disable this option for random-phase TRIAC driver (e.g. MOC3021).
+
+endmenu
