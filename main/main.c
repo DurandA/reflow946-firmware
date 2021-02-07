@@ -37,20 +37,15 @@
 
 static const char *tag = "NimBLE_BLE_Reflow946";
 
-static xTimerHandle blehr_tx_timer;
-
 static bool notify_state;
 
 static uint16_t conn_handle;
 
-static const char *device_name = "blehr_sensor_1.0";
+static const char *device_name = "bler_controller_1.0";
 
-static int blehr_gap_event(struct ble_gap_event *event, void *arg);
+static int bler_gap_event(struct ble_gap_event *event, void *arg);
 
-static uint8_t blehr_addr_type;
-
-/* Variable to simulate heart beats */
-static uint8_t heartrate = 90;
+static uint8_t bler_addr_type;
 
 /**
  * Utility function to log an array of bytes.
@@ -81,7 +76,7 @@ print_addr(const void *addr)
  *     o Undirected connectable mode
  */
 static void
-blehr_advertise(void)
+bler_advertise(void)
 {
     struct ble_gap_adv_params adv_params;
     struct ble_hs_adv_fields fields;
@@ -125,69 +120,33 @@ blehr_advertise(void)
     memset(&adv_params, 0, sizeof(adv_params));
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
-    rc = ble_gap_adv_start(blehr_addr_type, NULL, BLE_HS_FOREVER,
-                           &adv_params, blehr_gap_event, NULL);
+    rc = ble_gap_adv_start(bler_addr_type, NULL, BLE_HS_FOREVER,
+                           &adv_params, bler_gap_event, NULL);
     if (rc != 0) {
         MODLOG_DFLT(ERROR, "error enabling advertisement; rc=%d\n", rc);
         return;
     }
 }
 
-static void
-blehr_tx_hrate_stop(void)
-{
-    xTimerStop( blehr_tx_timer, 1000 / portTICK_PERIOD_MS );
-}
-
-/* Reset heart rate measurement */
-static void
-blehr_tx_hrate_reset(void)
-{
-    int rc;
-
-    if (xTimerReset(blehr_tx_timer, 1000 / portTICK_PERIOD_MS ) == pdPASS) {
-        rc = 0;
-    } else {
-        rc = 1;
-    }
-
-    assert(rc == 0);
-
-}
-
-/* This function simulates heart beat and notifies it to the client */
-static void
-blehr_tx_hrate(xTimerHandle ev)
-{
-    static uint8_t hrm[2];
+void bler_tx_temperature(float celcius) {
+    static int16_t temperature;
     int rc;
     struct os_mbuf *om;
 
     if (!notify_state) {
-        blehr_tx_hrate_stop();
-        heartrate = 90;
         return;
     }
 
-    hrm[0] = 0x06; /* contact of a sensor */
-    hrm[1] = heartrate; /* storing dummy data */
+    temperature = celcius*10;
 
-    /* Simulation of heart beats */
-    heartrate++;
-    if (heartrate == 160) {
-        heartrate = 90;
-    }
-
-    om = ble_hs_mbuf_from_flat(hrm, sizeof(hrm));
-    rc = ble_gattc_notify_custom(conn_handle, hrs_hrm_handle, om);
+    om = ble_hs_mbuf_from_flat(&temperature, sizeof(temperature));
+    rc = ble_gattc_notify_custom(conn_handle, rs_temperature_handle, om);
 
     assert(rc == 0);
-
-    blehr_tx_hrate_reset();
 }
 
 static int
-blehr_gap_event(struct ble_gap_event *event, void *arg)
+bler_gap_event(struct ble_gap_event *event, void *arg)
 {
     switch (event->type) {
     case BLE_GAP_EVENT_CONNECT:
@@ -198,7 +157,7 @@ blehr_gap_event(struct ble_gap_event *event, void *arg)
 
         if (event->connect.status != 0) {
             /* Connection failed; resume advertising */
-            blehr_advertise();
+            bler_advertise();
         }
         conn_handle = event->connect.conn_handle;
         break;
@@ -207,24 +166,22 @@ blehr_gap_event(struct ble_gap_event *event, void *arg)
         MODLOG_DFLT(INFO, "disconnect; reason=%d\n", event->disconnect.reason);
 
         /* Connection terminated; resume advertising */
-        blehr_advertise();
+        bler_advertise();
         break;
 
     case BLE_GAP_EVENT_ADV_COMPLETE:
         MODLOG_DFLT(INFO, "adv complete\n");
-        blehr_advertise();
+        bler_advertise();
         break;
 
     case BLE_GAP_EVENT_SUBSCRIBE:
         MODLOG_DFLT(INFO, "subscribe event; cur_notify=%d\n value handle; "
                     "val_handle=%d\n",
-                    event->subscribe.cur_notify, hrs_hrm_handle);
-        if (event->subscribe.attr_handle == hrs_hrm_handle) {
+                    event->subscribe.cur_notify, rs_temperature_handle);
+        if (event->subscribe.attr_handle == rs_temperature_handle) {
             notify_state = event->subscribe.cur_notify;
-            blehr_tx_hrate_reset();
-        } else if (event->subscribe.attr_handle != hrs_hrm_handle) {
+        } else if (event->subscribe.attr_handle != rs_temperature_handle) {
             notify_state = event->subscribe.cur_notify;
-            blehr_tx_hrate_stop();
         }
         ESP_LOGI("BLE_GAP_SUBSCRIBE_EVENT", "conn_handle from subscribe=%d", conn_handle);
         break;
@@ -241,31 +198,31 @@ blehr_gap_event(struct ble_gap_event *event, void *arg)
 }
 
 static void
-blehr_on_sync(void)
+bler_on_sync(void)
 {
     int rc;
 
-    rc = ble_hs_id_infer_auto(0, &blehr_addr_type);
+    rc = ble_hs_id_infer_auto(0, &bler_addr_type);
     assert(rc == 0);
 
     uint8_t addr_val[6] = {0};
-    rc = ble_hs_id_copy_addr(blehr_addr_type, addr_val, NULL);
+    rc = ble_hs_id_copy_addr(bler_addr_type, addr_val, NULL);
 
     MODLOG_DFLT(INFO, "Device Address: ");
     print_addr(addr_val);
     MODLOG_DFLT(INFO, "\n");
 
     /* Begin advertising */
-    blehr_advertise();
+    bler_advertise();
 }
 
 static void
-blehr_on_reset(int reason)
+bler_on_reset(int reason)
 {
     MODLOG_DFLT(ERROR, "Resetting state; reason=%d\n", reason);
 }
 
-void blehr_host_task(void *param)
+void bler_host_task(void *param)
 {
     ESP_LOGI(tag, "BLE Host Task Started");
     /* This function will return only when nimble_port_stop() is executed */
@@ -290,11 +247,8 @@ void app_main(void)
 
     nimble_port_init();
     /* Initialize the NimBLE host configuration */
-    ble_hs_cfg.sync_cb = blehr_on_sync;
-    ble_hs_cfg.reset_cb = blehr_on_reset;
-
-    /* name, period/time,  auto reload, timer ID, callback */
-    blehr_tx_timer = xTimerCreate("blehr_tx_timer", pdMS_TO_TICKS(1000), pdTRUE, (void *)0, blehr_tx_hrate);
+    ble_hs_cfg.sync_cb = bler_on_sync;
+    ble_hs_cfg.reset_cb = bler_on_reset;
 
     rc = gatt_svr_init();
     assert(rc == 0);
@@ -304,7 +258,7 @@ void app_main(void)
     assert(rc == 0);
 
     /* Start the task */
-    nimble_port_freertos_init(blehr_host_task);
+    nimble_port_freertos_init(bler_host_task);
 
     segments_init();
     ui_init();

@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "driver/rmt.h"
+#include "bler946.h"
 #include "controller.h"
 #include "max31855.h"
 #include "ui.h"
@@ -94,6 +95,7 @@ void controller_task(void *param) {
             atomic_store(&pulse_delay, 0);
         }
 #endif
+        bler_tx_temperature(centigrade);
         vTaskDelay(xDelay);
     }
 }
