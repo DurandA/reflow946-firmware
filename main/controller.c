@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
+#include "driver/pcnt.h"
 #include "driver/rmt.h"
 #include "bler946.h"
 #include "controller.h"
@@ -20,7 +21,8 @@ static const char *tag = "Controller";
 #define ESP_INTR_FLAG_DEFAULT 0
 
 static atomic_int temperature;
-static atomic_int target_temperature;
+atomic_int ato_target;
+atomic_uint ato_half_ac_freq;
 
 #ifndef CONFIG_ZERO_CROSSING_DRIVER
 static TaskHandle_t firing_handle;
@@ -65,7 +67,7 @@ int get_temperature() {
 }
 
 void set_target_temperature(int value) {
-    atomic_store(&target_temperature, value);
+    atomic_store(&ato_target, value);
 }
 
 void controller_task(void *param) {
@@ -80,7 +82,7 @@ void controller_task(void *param) {
         atomic_store(&temperature, centigrade);
         ui_display_temperature(centigrade);
         ESP_LOGI(tag, "Temperature: %i", centigrade);
-        int target = atomic_load(&target_temperature);
+        int target = atomic_load(&ato_target);
 #ifdef CONFIG_ZERO_CROSSING_DRIVER
         if (centigrade < target) {
             gpio_set_level(GPIO_OUTPUT_OPTOCOUPLER, 1);
@@ -100,6 +102,17 @@ void controller_task(void *param) {
     }
 }
 
+static void IRAM_ATTR pcnt_ac_intr_handler(void *arg)
+{
+    static unsigned long last_time = 0;
+    unsigned long pcnt_time = esp_timer_get_time();
+    unsigned long elapsed = pcnt_time - last_time;
+    uint32_t half_ac_freq = 100*100*1000000ULL/elapsed;
+    atomic_store(&ato_half_ac_freq, half_ac_freq);
+    last_time = pcnt_time;
+    pcnt_counter_clear(PCNT_UNIT_0);
+}
+
 void controller_start (spi_device_handle_t *spi) {
     static TaskHandle_t controller_handle;
     xTaskCreate(&controller_task, "controller_task", 8192, spi, 1, &controller_handle);
@@ -109,9 +122,50 @@ void controller_start (spi_device_handle_t *spi) {
 #endif
 }
 
+static void pcnt_ac_init()
+{
+    pcnt_unit_t unit = PCNT_UNIT_0;
+    /* Prepare configuration for the PCNT unit */
+    pcnt_config_t pcnt_config = {
+        // Set PCNT input signal and control GPIOs
+        .pulse_gpio_num = GPIO_INPUT_ZEROCROSS,
+        .ctrl_gpio_num = -1,
+        .channel = PCNT_CHANNEL_0,
+        .unit = unit,
+        // What to do on the positive / negative edge of pulse input?
+        .pos_mode = PCNT_COUNT_DIS,   // Keep the counter value on the positive edge
+        .neg_mode = PCNT_COUNT_INC,   // Count up on the negative edge
+        // Set the maximum and minimum limit values to watch
+        .counter_h_lim = 100,
+        .counter_l_lim = 0,
+    };
+    /* Initialize PCNT unit */
+    pcnt_unit_config(&pcnt_config);
+
+    /* Configure and enable the input filter */
+    pcnt_set_filter_value(unit, 1023);
+    pcnt_filter_enable(unit);
+
+    pcnt_event_enable(unit, PCNT_EVT_H_LIM);
+
+    /* Initialize PCNT's counter */
+    pcnt_counter_pause(unit);
+    pcnt_counter_clear(unit);
+
+    /* Install interrupt service and add isr callback handler */
+    pcnt_isr_service_install(0);
+    pcnt_isr_handler_add(unit, pcnt_ac_intr_handler, (void *)unit);
+
+    /* Everything is set up, now go to counting */
+    pcnt_counter_resume(unit);
+}
+
 void controller_init (void) {
     atomic_init(&temperature, 0);
-    atomic_init(&target_temperature, 0);
+    atomic_init(&ato_target, 0);
+    atomic_init(&ato_half_ac_freq, 0);
+
+    pcnt_ac_init();
 #ifdef CONFIG_ZERO_CROSSING_DRIVER
     gpio_config_t opto_io = {0};
     opto_io.pin_bit_mask = 1ULL<<GPIO_OUTPUT_OPTOCOUPLER;

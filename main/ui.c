@@ -22,21 +22,20 @@
 #define BIT_BTN_C (1 << 3)
 
 
-static int target_temperature = 25;
+static int target = 25;
 static TaskHandle_t ui_handle;
 
 void button_ab_cb(void* arg)
 {
     char* pstr = (char*) arg;
     if (*pstr == 'A') {
-        target_temperature += 1;
+        target = atomic_fetch_add(&ato_target, 1);
         xTaskNotify(ui_handle, BIT_BTN_A, eSetBits);
     }
     if (*pstr == 'B') {
-        target_temperature -= 1;
+        target = atomic_fetch_sub(&ato_target, 1);
         xTaskNotify(ui_handle, BIT_BTN_B, eSetBits);
     }
-    set_target_temperature(target_temperature);
 }
 
 void button_c_cb(void* arg)
@@ -69,7 +68,7 @@ void ui_task(void *param){
         if (press_time+1500*1000 < esp_timer_get_time()) {
             write_digits(temperature);
         } else {
-            write_digits(target_temperature);
+            write_digits(target);
         }
     }
 }

@@ -66,7 +66,7 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
                 .flags = BLE_GATT_CHR_F_NOTIFY,
             }, {
                 /* Characteristic: Temperature control */
-                .uuid = BLE_UUID16_DECLARE(GATT_RS_TARGET_UUID),
+                .uuid = BLE_UUID128_DECLARE(GATT_RS_TARGET_UUID),
                 .access_cb = gatt_svr_chr_access_reflow,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
             }, {
@@ -76,7 +76,7 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
                 .flags = BLE_GATT_CHR_F_WRITE,
             }, {
                 /* Characteristic: AC half period */
-                .uuid = BLE_UUID128_DECLARE(GATT_RS_PERIOD_UUID),
+                .uuid = BLE_UUID128_DECLARE(GATT_RS_AC_HALF_FREQ_UUID),
                 .access_cb = gatt_svr_chr_access_reflow,
                 .flags = BLE_GATT_CHR_F_READ,
                 .descriptors = (struct ble_gatt_dsc_def[])
@@ -133,10 +133,32 @@ gatt_svr_chr_access_reflow(uint16_t conn_handle, uint16_t attr_handle,
     ble_uuid_t *uuid = ctxt->chr->uuid;
     int rc;
 
-    if (ble_uuid_cmp(uuid, BLE_UUID128_DECLARE(GATT_RS_PERIOD_UUID)) == 0) {
-        uint32_t pval = 0;//atomic_load(&period);
+    if (ble_uuid_cmp(uuid, BLE_UUID128_DECLARE(GATT_RS_AC_HALF_FREQ_UUID)) == 0) {
+        uint32_t pval = atomic_load(&ato_half_ac_freq);
         rc = os_mbuf_append(ctxt->om, &pval, 4);
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+    if (ble_uuid_cmp(uuid, BLE_UUID128_DECLARE(GATT_RS_TARGET_UUID)) == 0) {
+        int32_t target;
+        switch (ctxt->op) {
+        case BLE_GATT_ACCESS_OP_READ_CHR:
+            target = atomic_load(&ato_target);
+            rc = os_mbuf_append(ctxt->om, &target,
+                                sizeof target);
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+
+        case BLE_GATT_ACCESS_OP_WRITE_CHR:
+            rc = gatt_svr_chr_write(ctxt->om,
+                                    sizeof target,
+                                    sizeof target,
+                                    &target, NULL);
+            atomic_store(&ato_target, target);
+            return rc;
+
+        default:
+            assert(0);
+            return BLE_ATT_ERR_UNLIKELY;
+        }
     }
     if (ble_uuid_cmp(uuid, BLE_UUID128_DECLARE(GATT_RS_PROFILE_UUID)) == 0) {
         switch (ctxt->op) {
@@ -212,13 +234,13 @@ gatt_svr_att_access_presentation_format(uint16_t conn_handle,
                                      void *arg)
 {
     int rc;
-    ble2904_data_t period_dsc = {
+    ble2904_data_t ble2904 = {
 	    .format = 6,
-	    .exponent = 2,
+	    .exponent = -2,
 	    .unit = 0x2722,
 	    .namespace = 1, // 1 = Bluetooth SIG Assigned Numbers
     };
-    rc = os_mbuf_append(ctxt->om, &period_dsc, sizeof(period_dsc));
+    rc = os_mbuf_append(ctxt->om, &ble2904, sizeof(ble2904));
     return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
 
