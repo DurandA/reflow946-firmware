@@ -12,7 +12,8 @@
 #define GPIO_OUTPUT_DIGIT_0   26
 #define GPIO_OUTPUT_DIGIT_1   18
 #define GPIO_OUTPUT_DIGIT_2   21
-#define GPIO_OUTPUT_SEGMENTS  0b1000110010110010000000100000
+#define GPIO_OUTPUT_DP        5
+#define GPIO_OUTPUT_SEGMENTS  0b1000110010110010000000000000
 #define TIMER_DIVIDER         16  //  Hardware timer clock divider
 #define TIMER_SCALE (TIMER_BASE_CLK / TIMER_DIVIDER) // convert counter value to seconds
 
@@ -53,13 +54,17 @@ void write_digits(int value) {
     write_segments(data);
 }
 
+void set_dp(int level) {
+    gpio_set_level(GPIO_OUTPUT_DP, level);
+}
+
 void IRAM_ATTR timer_segments_isr() {
-    static int cc=0;
+    static int digit = 0;
     unsigned long _segments = atomic_load(&segments);
     
     //portDISABLE_INTERRUPTS();
-    scan(((uint8_t*)&_segments)[cc] /*& 0x0F*/); //Anding with 0x0F to remove upper nibble
-    switch (cc) {
+    scan(((uint8_t*)&_segments)[digit] & 0x0F); //Anding with 0x0F to remove upper nibble
+    switch (digit) {
         case 0:
             GPIO.out_w1tc = ((uint32_t)1 << GPIO_OUTPUT_DIGIT_2);
             GPIO.out_w1ts = ((uint32_t)1 << GPIO_OUTPUT_DIGIT_0);
@@ -74,8 +79,8 @@ void IRAM_ATTR timer_segments_isr() {
             break;
     }
     //portENABLE_INTERRUPTS();
-    cc++;
-    if (cc==3) {cc=0;}
+    digit++;
+    if (digit==3) {digit = 0;}
     TIMERG0.int_clr_timers.t0_int_clr = 1;
     TIMERG0.hw_timer[0].config.tx_alarm_en = 1;
 }
@@ -86,7 +91,7 @@ void segments_init(void)
     gpio_config_t io_conf;
     io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = (uint64_t)GPIO_OUTPUT_SEGMENTS | (1ULL<<GPIO_OUTPUT_DIGIT_0) | (1ULL<<GPIO_OUTPUT_DIGIT_1) | (1ULL<<GPIO_OUTPUT_DIGIT_2);
+    io_conf.pin_bit_mask = (uint64_t)GPIO_OUTPUT_SEGMENTS | (1ULL<<GPIO_OUTPUT_DP) | (1ULL<<GPIO_OUTPUT_DIGIT_0) | (1ULL<<GPIO_OUTPUT_DIGIT_1) | (1ULL<<GPIO_OUTPUT_DIGIT_2);
     io_conf.pull_down_en = 0;
     io_conf.pull_up_en = 0;
     gpio_config(&io_conf);
