@@ -4,6 +4,7 @@
 #include <stdatomic.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_timer.h"
 #include "driver/gpio.h"
 #include "driver/rmt.h"
 #include "bler946.h"
@@ -119,7 +120,7 @@ void controller_init (void) {
     gpio_config(&opto_io);
 #else
     gpio_config_t io_conf = {0};
-    io_conf.intr_type = GPIO_PIN_INTR_NEGEDGE;
+    io_conf.intr_type = GPIO_INTR_NEGEDGE;
     io_conf.pin_bit_mask = 1ULL<<GPIO_INPUT_ZEROCROSS;
     io_conf.mode = GPIO_MODE_INPUT;
     //io_conf.pull_up_en = 1;

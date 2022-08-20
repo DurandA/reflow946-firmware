@@ -243,7 +243,7 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    ESP_ERROR_CHECK(esp_nimble_hci_and_controller_init());
+    ESP_ERROR_CHECK(esp_nimble_hci_init());
 
     nimble_port_init();
     /* Initialize the NimBLE host configuration */

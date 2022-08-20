@@ -66,7 +66,7 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
                 .flags = BLE_GATT_CHR_F_NOTIFY,
             }, {
                 /* Characteristic: Temperature control */
-                .uuid = BLE_UUID16_DECLARE(GATT_RS_TARGET_UUID),
+                .uuid = BLE_UUID128_DECLARE(GATT_RS_TARGET_UUID),
                 .access_cb = gatt_svr_chr_access_reflow,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
             }, {

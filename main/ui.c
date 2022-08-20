@@ -8,6 +8,7 @@
 #include "unity.h"
 #include "iot_button.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "esp_log.h"
 #include "segments.h"
 #include "controller.h"
@@ -58,7 +59,7 @@ void ui_task(void *param){
         xTaskNotifyWait(0x00, /* Don’t clear any notification bits on entry. */
                         ULONG_MAX, /* Reset the notification value to 0 on exit. */
                         &ulNotificationValue, /* Notified value pass out in ulNotifiedValue. */
-                        100/portTICK_RATE_MS);
+                        100/portTICK_PERIOD_MS);
 
         if (ulNotificationValue & (BIT_BTN_A|BIT_BTN_B|BIT_BTN_C)) {
             press_time = esp_timer_get_time();
@@ -108,5 +109,5 @@ void ui_init(void)
         },
     };
     button_handle_t btn_c_handle = iot_button_create(&btn_c_cfg);
-    iot_button_register_cb(btn_c_handle, BUTTON_LONG_PRESS_START, button_c_cb, "C");
+    iot_button_register_cb(btn_c_handle, BUTTON_LONG_PRESS_START, &button_c_cb, "C");
 }

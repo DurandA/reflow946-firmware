@@ -4,6 +4,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
+#include "soc/gpio_struct.h"
+#include "soc/timer_group_struct.h"
 #include "driver/timer.h"
 #include "segments.h"
 
@@ -74,15 +76,15 @@ void IRAM_ATTR timer_segments_isr() {
     //portENABLE_INTERRUPTS();
     cc++;
     if (cc==3) {cc=0;}
-    TIMERG0.int_clr_timers.t0 = 1;
-    TIMERG0.hw_timer[0].config.alarm_en = 1;
+    TIMERG0.int_clr_timers.t0_int_clr = 1;
+    TIMERG0.hw_timer[0].config.tx_alarm_en = 1;
 }
 
 void segments_init(void)
 {
     atomic_store(&segments, 0UL);
     gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
+    io_conf.intr_type = GPIO_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_OUTPUT;
     io_conf.pin_bit_mask = (uint64_t)GPIO_OUTPUT_SEGMENTS | (1ULL<<GPIO_OUTPUT_DIGIT_0) | (1ULL<<GPIO_OUTPUT_DIGIT_1) | (1ULL<<GPIO_OUTPUT_DIGIT_2);
     io_conf.pull_down_en = 0;
