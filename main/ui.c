@@ -25,7 +25,7 @@
 static int target_temperature = 25;
 static TaskHandle_t ui_handle;
 
-void button_ab_cb(void* arg)
+static void button_ab_cb(void* arg)
 {
     char* pstr = (char*) arg;
     if (*pstr == 'A') {
@@ -39,7 +39,7 @@ void button_ab_cb(void* arg)
     set_target_temperature(target_temperature);
 }
 
-void button_c_cb(void* arg)
+static void button_c_cb(void* arg)
 {
     xTaskNotify(ui_handle, BIT_BTN_C, eSetBits);
 }
@@ -77,12 +77,36 @@ void ui_task(void *param){
 void ui_init(void)
 {
     xTaskCreate(ui_task, "ui_task", 2048, NULL, 2, &ui_handle);
-    button_handle_t btn_a_handle = iot_button_create(PIN_BTN_A, BUTTON_ACTIVE_LOW);
-    iot_button_set_evt_cb(btn_a_handle, BUTTON_CB_PUSH, button_ab_cb, "A");
-    iot_button_set_serial_cb(btn_a_handle, 1, 60/portTICK_RATE_MS, button_ab_cb, "A");
-    button_handle_t btn_b_handle = iot_button_create(PIN_BTN_B, BUTTON_ACTIVE_LOW);
-    iot_button_set_evt_cb(btn_b_handle, BUTTON_CB_PUSH, button_ab_cb, "B");
-    iot_button_set_serial_cb(btn_b_handle, 1, 60/portTICK_RATE_MS, button_ab_cb, "B");
-    button_handle_t btn_c_handle = iot_button_create(PIN_BTN_C, BUTTON_ACTIVE_LOW);
-    iot_button_set_evt_cb(btn_c_handle, BUTTON_CB_PUSH, button_c_cb, "C");
+
+    button_config_t btn_a_cfg = {
+        .type = BUTTON_TYPE_GPIO,
+        .gpio_button_config = {
+            .gpio_num = PIN_BTN_A,
+            .active_level = 0,
+        },
+    };
+    button_handle_t btn_a_handle = iot_button_create(&btn_a_cfg);
+    iot_button_register_cb(btn_a_handle, BUTTON_PRESS_DOWN, button_ab_cb, "A");
+    iot_button_register_cb(btn_a_handle, BUTTON_LONG_PRESS_HOLD, button_ab_cb, "A");
+
+    button_config_t btn_b_cfg = {
+        .type = BUTTON_TYPE_GPIO,
+        .gpio_button_config = {
+            .gpio_num = PIN_BTN_B,
+            .active_level = 0,
+        },
+    };
+    button_handle_t btn_b_handle = iot_button_create(&btn_b_cfg);
+    iot_button_register_cb(btn_b_handle, BUTTON_PRESS_DOWN, button_ab_cb, "B");
+    iot_button_register_cb(btn_b_handle, BUTTON_LONG_PRESS_HOLD, button_ab_cb, "B");
+
+    button_config_t btn_c_cfg = {
+        .type = BUTTON_TYPE_GPIO,
+        .gpio_button_config = {
+            .gpio_num = PIN_BTN_C,
+            .active_level = 0,
+        },
+    };
+    button_handle_t btn_c_handle = iot_button_create(&btn_c_cfg);
+    iot_button_register_cb(btn_c_handle, BUTTON_LONG_PRESS_START, button_c_cb, "C");
 }

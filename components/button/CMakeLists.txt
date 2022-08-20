@@ -10,3 +10,5 @@ idf_component_register(SRCS "button_adc.c" "button_gpio.c" "iot_button.c"
                         INCLUDE_DIRS include
                         REQUIRES driver
                         PRIV_REQUIRES ${PRIVREQ})
+
+component_compile_options(-Wno-error=format)
