@@ -63,7 +63,11 @@ void ui_task(void *param){
             press_time = esp_timer_get_time();
         }
         if (ulNotificationValue & (BIT_BTN_C)) {
-            ;
+            if (!reflow_is_running()) {
+                reflow_start();
+            } else {
+                reflow_stop();
+            }
         }
         if (ulNotificationValue & (BIT_TEMPERATURE)) {
             temperature = get_temperature();

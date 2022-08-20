@@ -28,6 +28,9 @@ static atomic_int temperature;
 atomic_int ato_target;
 atomic_uint ato_half_ac_freq;
 
+static TaskHandle_t reflow_handle = NULL;
+static reflow_profile_t reflow_profile = {0};
+
 #ifndef CONFIG_ZERO_CROSSING_DRIVER
 static TaskHandle_t firing_handle;
 
@@ -72,6 +75,76 @@ int get_temperature() {
 
 void set_target_temperature(int value) {
     atomic_store(&ato_target, value);
+}
+
+void reflow_task(void *param) {
+    int last_temperature = 30;
+    const TickType_t xDelay = 1000 / portTICK_PERIOD_MS;
+    for (int step = 0; step < MAX_REFLOW_STEPS; step++) {
+        ESP_LOGI(tag, "Ramping temperature to %i for %i s", reflow_profile.data[step].temperature, reflow_profile.data[step].duration);
+        TickType_t step_start_time = xTaskGetTickCount();
+        for ( ;; ) {
+            TickType_t elapsed = xTaskGetTickCount() - step_start_time;
+            TickType_t duration = reflow_profile.data[step].duration * 1000 / portTICK_PERIOD_MS;
+            if (elapsed > duration)
+                break;
+            float interpolation = (float)elapsed / duration;
+            int target_temperature = LERP(last_temperature, reflow_profile.data[step].temperature, interpolation);
+
+            vTaskDelay(xDelay);
+        }
+        last_temperature = reflow_profile.data[step].temperature;
+    }
+    set_target_temperature(0);
+    vTaskDelete(reflow_handle);
+}
+
+void reflow_start() {
+    if(reflow_handle == NULL){
+        xTaskCreate(reflow_task, "reflow_task", 8192, NULL, 1, &reflow_handle);
+    }
+}
+
+void reflow_stop() {
+    if(reflow_handle != NULL){
+        vTaskDelete(reflow_handle);
+        reflow_handle = NULL;
+    }
+}
+
+bool reflow_is_running() {
+    return reflow_handle != NULL;
+}
+
+void store_profile() {
+    nvs_handle_t my_handle;
+    esp_err_t err;
+
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &my_handle);
+    ESP_ERROR_CHECK(err);
+    err = nvs_set_blob(my_handle, "reflow_profile", &reflow_profile, sizeof(reflow_profile));
+    ESP_ERROR_CHECK(err);
+    err = nvs_commit(my_handle);
+    ESP_ERROR_CHECK(err);
+
+    nvs_close(my_handle);
+}
+
+void load_profile() {
+    nvs_handle_t my_handle;
+    esp_err_t err;
+
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READONLY, &my_handle);
+    ESP_ERROR_CHECK(err);
+    size_t required_size = 0; // value will default to 0, if not set yet in NVS
+    err = nvs_get_blob(my_handle, "reflow_profile", NULL, &required_size);
+    ESP_ERROR_CHECK(err);
+
+    nvs_close(my_handle);
+}
+
+void set_profile(reflow_profile_t *profile) {
+    memcpy(&reflow_profile, profile, sizeof(reflow_profile));
 }
 
 void controller_task(void *param) {
