@@ -55,7 +55,7 @@ void write_digits(int value) {
 }
 
 void set_dp(int level) {
-    gpio_set_level(GPIO_OUTPUT_DP, level);
+    gpio_set_level(GPIO_OUTPUT_DP, !level);
 }
 
 static bool IRAM_ATTR segments_timer_on_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx) {
@@ -95,6 +95,8 @@ void segments_init(void)
     io_conf.pull_down_en = 0;
     io_conf.pull_up_en = 0;
     gpio_config(&io_conf);
+
+    gpio_set_level(GPIO_OUTPUT_DP, 1);
 
     gptimer_handle_t gptimer = NULL;
     gptimer_config_t timer_config = {

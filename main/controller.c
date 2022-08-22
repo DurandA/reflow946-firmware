@@ -14,6 +14,7 @@
 #include "controller.h"
 #include "max31855.h"
 #include "ui.h"
+#include "segments.h"
 
 static const char *tag = "Controller";
 
@@ -82,6 +83,9 @@ void set_target_temperature(int value) {
 void reflow_task(void *param) {
     int last_temperature = 30;
     const TickType_t xDelay = 1000 / portTICK_PERIOD_MS;
+
+    set_dp(1);
+
     for (int step = 0; step < MAX_REFLOW_STEPS; step++) {
         ESP_LOGI(tag, "Ramping temperature to %i for %i s", reflow_profile.data[step].temperature, reflow_profile.data[step].duration);
         TickType_t step_start_time = xTaskGetTickCount();
@@ -98,7 +102,10 @@ void reflow_task(void *param) {
         last_temperature = reflow_profile.data[step].temperature;
     }
     set_target_temperature(0);
-    vTaskDelete(reflow_handle);
+    set_dp(0);
+
+    reflow_handle = NULL;
+    vTaskDelete(NULL);
 }
 
 void reflow_start() {
@@ -111,6 +118,7 @@ void reflow_stop() {
     if(reflow_handle != NULL){
         vTaskDelete(reflow_handle);
         reflow_handle = NULL;
+        set_dp(0);
     }
 }
 
