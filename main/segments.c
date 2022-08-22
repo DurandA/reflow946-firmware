@@ -6,7 +6,7 @@
 #include "driver/gpio.h"
 #include "soc/gpio_struct.h"
 #include "soc/timer_group_struct.h"
-#include "driver/timer.h"
+#include "driver/gptimer.h"
 #include "segments.h"
 
 #define GPIO_OUTPUT_DIGIT_0   26
@@ -58,7 +58,7 @@ void set_dp(int level) {
     gpio_set_level(GPIO_OUTPUT_DP, level);
 }
 
-void IRAM_ATTR timer_segments_isr() {
+static bool IRAM_ATTR segments_timer_on_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx) {
     static int digit = 0;
     unsigned long _segments = atomic_load(&segments);
     
@@ -81,8 +81,8 @@ void IRAM_ATTR timer_segments_isr() {
     //portENABLE_INTERRUPTS();
     digit++;
     if (digit==3) {digit = 0;}
-    TIMERG0.int_clr_timers.t0_int_clr = 1;
-    TIMERG0.hw_timer[0].config.tx_alarm_en = 1;
+
+    return true;
 }
 
 void segments_init(void)
@@ -96,26 +96,25 @@ void segments_init(void)
     io_conf.pull_up_en = 0;
     gpio_config(&io_conf);
 
-    int timer_idx = 0;
-    /* Select and initialize basic parameters of the timer */
-    timer_config_t config;
-    config.divider = TIMER_DIVIDER;
-    config.counter_dir = TIMER_COUNT_UP;
-    config.counter_en = TIMER_PAUSE;
-    config.alarm_en = TIMER_ALARM_EN;
-    config.intr_type = TIMER_INTR_LEVEL;
-    config.auto_reload = true;
-    timer_init(TIMER_GROUP_0, timer_idx, &config);
+    gptimer_handle_t gptimer = NULL;
+    gptimer_config_t timer_config = {
+        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+        .direction = GPTIMER_COUNT_UP,
+        .resolution_hz = 1 * 1000 * 1000, // 1MHz, 1 tick = 1us
+    };
+    ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &gptimer));
 
-    /* Timer's counter will initially start from value below.
-       Also, if auto_reload is set, this value will be automatically reload on alarm */
-    timer_set_counter_value(TIMER_GROUP_0, timer_idx, 0x00000000ULL);
+    gptimer_alarm_config_t alarm_config = {
+        .reload_count = 0, // counter will reload with 0 on alarm event
+        .alarm_count = 1000, // period = 1ms @resolution 1MHz
+        .flags.auto_reload_on_alarm = true, // enable auto-reload
+    };
+    ESP_ERROR_CHECK(gptimer_set_alarm_action(gptimer, &alarm_config));
 
-    /* Configure the alarm value and the interrupt on alarm. */
-    timer_set_alarm_value(TIMER_GROUP_0, timer_idx, 5000);
-    timer_enable_intr(TIMER_GROUP_0, timer_idx);
-    timer_isr_register(TIMER_GROUP_0, timer_idx, timer_segments_isr, 
-        (void *) timer_idx, ESP_INTR_FLAG_IRAM, NULL);
-
-    timer_start(TIMER_GROUP_0, timer_idx);
+    gptimer_event_callbacks_t cbs = {
+        .on_alarm = segments_timer_on_alarm_cb, // register user callback
+    };
+    ESP_ERROR_CHECK(gptimer_register_event_callbacks(gptimer, &cbs, NULL));
+    ESP_ERROR_CHECK(gptimer_enable(gptimer));
+    ESP_ERROR_CHECK(gptimer_start(gptimer));
 }
