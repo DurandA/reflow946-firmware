@@ -243,22 +243,22 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    ESP_ERROR_CHECK(esp_nimble_hci_init());
+    // ESP_ERROR_CHECK(esp_nimble_hci_init());
 
-    nimble_port_init();
-    /* Initialize the NimBLE host configuration */
-    ble_hs_cfg.sync_cb = bler_on_sync;
-    ble_hs_cfg.reset_cb = bler_on_reset;
+    // nimble_port_init();
+    // /* Initialize the NimBLE host configuration */
+    // ble_hs_cfg.sync_cb = bler_on_sync;
+    // ble_hs_cfg.reset_cb = bler_on_reset;
 
-    rc = gatt_svr_init();
-    assert(rc == 0);
+    // rc = gatt_svr_init();
+    // assert(rc == 0);
 
-    /* Set the default device name */
-    rc = ble_svc_gap_device_name_set(device_name);
-    assert(rc == 0);
+    // /* Set the default device name */
+    // rc = ble_svc_gap_device_name_set(device_name);
+    // assert(rc == 0);
 
-    /* Start the task */
-    nimble_port_freertos_init(bler_host_task);
+    // /* Start the task */
+    // nimble_port_freertos_init(bler_host_task);
 
     segments_init();
     ui_init();

@@ -1,6 +1,8 @@
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "nvs_flash.h"
 #include <stdio.h>
+#include <string.h>
 #include <limits.h>
 #include <stdatomic.h>
 #include "freertos/FreeRTOS.h"
@@ -8,7 +10,7 @@
 #include "driver/gpio.h"
 #include "driver/pcnt.h"
 #include "driver/rmt.h"
-#include "bler946.h"
+// #include "bler946.h"
 #include "controller.h"
 #include "max31855.h"
 #include "ui.h"
@@ -175,7 +177,7 @@ void controller_task(void *param) {
             atomic_store(&pulse_delay, 0);
         }
 #endif
-        bler_tx_temperature(centigrade);
+        // bler_tx_temperature(centigrade);
         vTaskDelay(xDelay);
     }
 }
