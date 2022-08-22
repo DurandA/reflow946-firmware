@@ -25,17 +25,14 @@
 
 static TaskHandle_t ui_handle;
 
-static void button_ab_cb(void* arg)
+static void button_a_cb(void* arg)
 {
-    char* pstr = (char*) arg;
-    if (*pstr == 'A') {
-        atomic_fetch_add(&ato_target, 1);
-        xTaskNotify(ui_handle, BIT_BTN_A, eSetBits);
-    }
-    if (*pstr == 'B') {
-        atomic_fetch_sub(&ato_target, 1);
-        xTaskNotify(ui_handle, BIT_BTN_B, eSetBits);
-    }
+    xTaskNotify(ui_handle, BIT_BTN_A, eSetBits);
+}
+
+static void button_b_cb(void* arg)
+{
+    xTaskNotify(ui_handle, BIT_BTN_B, eSetBits);
 }
 
 static void button_c_cb(void* arg)
@@ -51,7 +48,7 @@ void ui_task(void *param){
     uint32_t ulNotificationValue;
     int temperature = 0;
     long press_time = 0;
-    //ui_handle = xTaskGetCurrentTaskHandle();
+
     for( ;; )
     {
         xTaskNotifyWait(0x00, /* Don’t clear any notification bits on entry. */
@@ -59,9 +56,29 @@ void ui_task(void *param){
                         &ulNotificationValue, /* Notified value pass out in ulNotifiedValue. */
                         100/portTICK_PERIOD_MS);
 
-        if (ulNotificationValue & (BIT_BTN_A|BIT_BTN_B|BIT_BTN_C)) {
-            press_time = esp_timer_get_time();
+        long time = esp_timer_get_time();
+
+        if (press_time + 1500 * 1000 < time) {
+            write_digits(temperature);
+        } else {
+            int target;
+            target = atomic_load(&ato_target);
+            write_digits(target);
         }
+
+        if (ulNotificationValue & (BIT_BTN_A|BIT_BTN_B|BIT_BTN_C)) {
+            if (press_time + 100 * 1000 < time) {
+                press_time = time;
+
+                if (ulNotificationValue & (BIT_BTN_A)) {
+                    atomic_fetch_add(&ato_target, 1);
+                }
+                if (ulNotificationValue & (BIT_BTN_B)) {
+                    atomic_fetch_sub(&ato_target, 1);
+                }
+            }
+        }
+
         if (ulNotificationValue & (BIT_BTN_C)) {
             if (!reflow_is_running()) {
                 reflow_start();
@@ -69,15 +86,9 @@ void ui_task(void *param){
                 reflow_stop();
             }
         }
+
         if (ulNotificationValue & (BIT_TEMPERATURE)) {
             temperature = get_temperature();
-        }
-        if (press_time+1500*1000 < esp_timer_get_time()) {
-            write_digits(temperature);
-        } else {
-            int target;
-            target = atomic_load(&ato_target);
-            write_digits(target);
         }
     }
 }
@@ -94,8 +105,8 @@ void ui_init(void)
         },
     };
     button_handle_t btn_a_handle = iot_button_create(&btn_a_cfg);
-    iot_button_register_cb(btn_a_handle, BUTTON_PRESS_DOWN, button_ab_cb, "A");
-    iot_button_register_cb(btn_a_handle, BUTTON_LONG_PRESS_HOLD, button_ab_cb, "A");
+    iot_button_register_cb(btn_a_handle, BUTTON_PRESS_DOWN, &button_a_cb, "A");
+    iot_button_register_cb(btn_a_handle, BUTTON_LONG_PRESS_HOLD, &button_a_cb, "A");
 
     button_config_t btn_b_cfg = {
         .type = BUTTON_TYPE_GPIO,
@@ -105,8 +116,8 @@ void ui_init(void)
         },
     };
     button_handle_t btn_b_handle = iot_button_create(&btn_b_cfg);
-    iot_button_register_cb(btn_b_handle, BUTTON_PRESS_DOWN, button_ab_cb, "B");
-    iot_button_register_cb(btn_b_handle, BUTTON_LONG_PRESS_HOLD, button_ab_cb, "B");
+    iot_button_register_cb(btn_b_handle, BUTTON_PRESS_DOWN, &button_b_cb, "B");
+    iot_button_register_cb(btn_b_handle, BUTTON_LONG_PRESS_HOLD, &button_b_cb, "B");
 
     button_config_t btn_c_cfg = {
         .type = BUTTON_TYPE_GPIO,
