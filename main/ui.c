@@ -27,17 +27,17 @@ static TaskHandle_t ui_handle;
 
 static void button_a_cb(void* arg)
 {
-    xTaskNotify(ui_handle, BIT_BTN_A, eSetBits);
+    xTaskNotifyFromISR(ui_handle, BIT_BTN_A, eSetBits, NULL);
 }
 
 static void button_b_cb(void* arg)
 {
-    xTaskNotify(ui_handle, BIT_BTN_B, eSetBits);
+    xTaskNotifyFromISR(ui_handle, BIT_BTN_B, eSetBits, NULL);
 }
 
 static void button_c_cb(void* arg)
 {
-    xTaskNotify(ui_handle, BIT_BTN_C, eSetBits);
+    xTaskNotifyFromISR(ui_handle, BIT_BTN_C, eSetBits, NULL);
 }
 
 void ui_display_temperature(){
@@ -67,15 +67,13 @@ void ui_task(void *param){
         }
 
         if (ulNotificationValue & (BIT_BTN_A|BIT_BTN_B|BIT_BTN_C)) {
-            if (press_time + 100 * 1000 < time) {
-                press_time = time;
+            press_time = time;
 
-                if (ulNotificationValue & (BIT_BTN_A)) {
-                    atomic_fetch_add(&ato_target, 1);
-                }
-                if (ulNotificationValue & (BIT_BTN_B)) {
-                    atomic_fetch_sub(&ato_target, 1);
-                }
+            if (ulNotificationValue & (BIT_BTN_A)) {
+                atomic_fetch_add(&ato_target, 1);
+            }
+            if (ulNotificationValue & (BIT_BTN_B)) {
+                atomic_fetch_sub(&ato_target, 1);
             }
         }
 
