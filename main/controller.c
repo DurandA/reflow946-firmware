@@ -81,27 +81,33 @@ void set_target_temperature(int value) {
 }
 
 void reflow_task(void *param) {
-    int last_temperature = 30;
     const TickType_t xDelay = 1000 / portTICK_PERIOD_MS;
 
+    /* Switch UI mode to reflow */
     set_dp(1);
 
-    for (int step = 0; step < MAX_REFLOW_STEPS; step++) {
-        ESP_LOGI(tag, "Ramping temperature to %i for %i s", reflow_profile.data[step].temperature, reflow_profile.data[step].duration);
+    for (int step = 0; step < MAX_REFLOW_STEPS; step++) {        
+        ESP_LOGI(tag, "Ramping temperature to %i", reflow_profile.data[step].temperature);
+        set_target_temperature(reflow_profile.data[step].temperature);
+
+        while (get_temperature() < reflow_profile.data[step].temperature) {
+            vTaskDelay(xDelay);
+        }
+
+        ESP_LOGI(tag, "Keeping temperature to %i for %i s", reflow_profile.data[step].temperature, reflow_profile.data[step].duration);
+        TickType_t duration = reflow_profile.data[step].duration * 1000 / portTICK_PERIOD_MS;
         TickType_t step_start_time = xTaskGetTickCount();
         for ( ;; ) {
             TickType_t elapsed = xTaskGetTickCount() - step_start_time;
-            TickType_t duration = reflow_profile.data[step].duration * 1000 / portTICK_PERIOD_MS;
             if (elapsed > duration)
                 break;
-            float interpolation = (float)elapsed / duration;
-            int target_temperature = LERP(last_temperature, reflow_profile.data[step].temperature, interpolation);
 
             vTaskDelay(xDelay);
         }
-        last_temperature = reflow_profile.data[step].temperature;
     }
-    set_target_temperature(0);
+    set_target_temperature(25);
+
+    /* Switch UI mode back to normal */
     set_dp(0);
 
     reflow_handle = NULL;
@@ -126,13 +132,13 @@ bool reflow_is_running() {
     return reflow_handle != NULL;
 }
 
-void store_profile() {
+void store_profile(reflow_profile_t *reflow_profile) {
     nvs_handle_t my_handle;
     esp_err_t err;
 
     err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &my_handle);
     ESP_ERROR_CHECK(err);
-    err = nvs_set_blob(my_handle, "reflow_profile", &reflow_profile, sizeof(reflow_profile));
+    err = nvs_set_blob(my_handle, "reflow_profile", reflow_profile, sizeof(reflow_profile_t));
     ESP_ERROR_CHECK(err);
     err = nvs_commit(my_handle);
     ESP_ERROR_CHECK(err);
@@ -140,17 +146,17 @@ void store_profile() {
     nvs_close(my_handle);
 }
 
-void load_profile() {
+esp_err_t load_profile() {
     nvs_handle_t my_handle;
     esp_err_t err;
 
     err = nvs_open(STORAGE_NAMESPACE, NVS_READONLY, &my_handle);
     ESP_ERROR_CHECK(err);
-    size_t required_size = 0; // value will default to 0, if not set yet in NVS
-    err = nvs_get_blob(my_handle, "reflow_profile", NULL, &required_size);
-    ESP_ERROR_CHECK(err);
+    size_t required_size = sizeof(reflow_profile); // value will default to 0, if not set yet in NVS
+    err = nvs_get_blob(my_handle, "reflow_profile", &reflow_profile, &required_size);
 
     nvs_close(my_handle);
+    return err;
 }
 
 void set_profile(reflow_profile_t *profile) {
@@ -169,7 +175,7 @@ void controller_task(void *param) {
         atomic_store(&temperature, centigrade);
         ui_display_temperature();
         int target = atomic_load(&ato_target);
-        ESP_LOGI(tag, "Temperature: %i (target: %i)", centigrade, target);
+        ESP_LOGD(tag, "Temperature: %i (target: %i)", centigrade, target);
 
 #ifdef CONFIG_ZERO_CROSSING_DRIVER
         if (centigrade < target) {

@@ -243,7 +243,21 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    // ESP_ERROR_CHECK(esp_nimble_hci_init());
+    ret = load_profile();
+    if (ret == ESP_ERR_NVS_NOT_FOUND) {
+        reflow_profile_t reflow_profile = (reflow_profile_t){
+            .data = {
+                {.duration = 90, .temperature = 170},
+                {.duration = 90, .temperature = 217},
+                {.duration = 50, .temperature = 240},
+                {.duration = 20, .temperature = 245},
+                { 0 }
+            }
+        };
+        set_profile(&reflow_profile);
+    } else {
+        ESP_ERROR_CHECK(ret);
+    }
 
     // nimble_port_init();
     // /* Initialize the NimBLE host configuration */
