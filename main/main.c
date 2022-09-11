@@ -41,7 +41,7 @@ static bool notify_state;
 
 static uint16_t conn_handle;
 
-static const char *device_name = "bler_controller_1.0";
+static const char *device_name = "reflow946_controller_1.0";
 
 static int bler_gap_event(struct ble_gap_event *event, void *arg);
 
@@ -259,20 +259,20 @@ void app_main(void)
         ESP_ERROR_CHECK(ret);
     }
 
-    // nimble_port_init();
-    // /* Initialize the NimBLE host configuration */
-    // ble_hs_cfg.sync_cb = bler_on_sync;
-    // ble_hs_cfg.reset_cb = bler_on_reset;
+    nimble_port_init();
+    /* Initialize the NimBLE host configuration */
+    ble_hs_cfg.sync_cb = bler_on_sync;
+    ble_hs_cfg.reset_cb = bler_on_reset;
 
-    // rc = gatt_svr_init();
-    // assert(rc == 0);
+    rc = gatt_svr_init();
+    assert(rc == 0);
 
-    // /* Set the default device name */
-    // rc = ble_svc_gap_device_name_set(device_name);
-    // assert(rc == 0);
+    /* Set the default device name */
+    rc = ble_svc_gap_device_name_set(device_name);
+    assert(rc == 0);
 
-    // /* Start the task */
-    // nimble_port_freertos_init(bler_host_task);
+    /* Start the task */
+    nimble_port_freertos_init(bler_host_task);
 
     segments_init();
     ui_init();

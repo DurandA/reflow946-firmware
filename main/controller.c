@@ -196,7 +196,7 @@ void controller_task(void *param) {
             atomic_store(&ato_pulse_delay, 0);
         }
 #endif
-        // bler_tx_temperature(centigrade);
+        bler_tx_temperature(centigrade);
         vTaskDelay(xDelay);
     }
 }

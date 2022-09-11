@@ -37,7 +37,23 @@ static const char *model_num = "Reflow946 ESP32 controller";
 uint16_t rs_temperature_handle;
 
 static int
-gatt_svr_chr_access_reflow(uint16_t conn_handle, uint16_t attr_handle,
+gatt_svr_chr_access_rs_temperature(uint16_t conn_handle, uint16_t attr_handle,
+                               struct ble_gatt_access_ctxt *ctxt, void *arg);
+
+static int
+gatt_svr_chr_access_rs_target(uint16_t conn_handle, uint16_t attr_handle,
+                               struct ble_gatt_access_ctxt *ctxt, void *arg);
+
+static int
+gatt_svr_chr_access_rs_profile(uint16_t conn_handle, uint16_t attr_handle,
+                               struct ble_gatt_access_ctxt *ctxt, void *arg);
+
+static int
+gatt_svr_chr_access_rs_ac_freq(uint16_t conn_handle, uint16_t attr_handle,
+                               struct ble_gatt_access_ctxt *ctxt, void *arg);
+
+static int
+gatt_svr_chr_access_rs_duty(uint16_t conn_handle, uint16_t attr_handle,
                                struct ble_gatt_access_ctxt *ctxt, void *arg);
 
 static int
@@ -45,7 +61,11 @@ gatt_svr_chr_access_device_info(uint16_t conn_handle, uint16_t attr_handle,
                                 struct ble_gatt_access_ctxt *ctxt, void *arg);
 
 static int
-gatt_svr_att_access_presentation_format(uint16_t conn_handle, uint16_t attr_handle,
+gatt_svr_att_access_format_ac_freq(uint16_t conn_handle, uint16_t attr_handle,
+                                struct ble_gatt_access_ctxt *ctxt, void *arg);
+
+static int
+gatt_svr_att_access_format_target(uint16_t conn_handle, uint16_t attr_handle,
                                 struct ble_gatt_access_ctxt *ctxt, void *arg);
 
 static int
@@ -61,38 +81,46 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
         { {
                 /* Characteristic: Tempeature measurement */
                 .uuid = BLE_UUID16_DECLARE(GATT_RS_TEMPERATURE_UUID),
-                .access_cb = gatt_svr_chr_access_reflow,
+                .access_cb = gatt_svr_chr_access_rs_temperature,
                 .val_handle = &rs_temperature_handle,
                 .flags = BLE_GATT_CHR_F_NOTIFY,
             }, {
                 /* Characteristic: Temperature control */
                 .uuid = BLE_UUID128_DECLARE(GATT_RS_TARGET_UUID),
-                .access_cb = gatt_svr_chr_access_reflow,
+                .access_cb = gatt_svr_chr_access_rs_target,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
+                .descriptors = (struct ble_gatt_dsc_def[])
+                { {
+                        .uuid = BLE_UUID16_DECLARE(0x2904),
+                        .att_flags = BLE_ATT_F_READ,
+                        .access_cb = gatt_svr_att_access_format_target,
+                    }, {
+                        0,
+                    }
+                },
             }, {
                 /* Characteristic: Reflow profile */
                 .uuid = BLE_UUID128_DECLARE(GATT_RS_PROFILE_UUID),
-                .access_cb = gatt_svr_chr_access_reflow,
+                .access_cb = gatt_svr_chr_access_rs_profile,
                 .flags = BLE_GATT_CHR_F_WRITE,
             }, {
                 /* Characteristic: AC half period */
-                .uuid = BLE_UUID128_DECLARE(GATT_RS_PERIOD_UUID),
-                .access_cb = gatt_svr_chr_access_reflow,
+                .uuid = BLE_UUID128_DECLARE(GATT_RS_AC_HALF_FREQ_UUID),
+                .access_cb = gatt_svr_chr_access_rs_ac_freq,
                 .flags = BLE_GATT_CHR_F_READ,
                 .descriptors = (struct ble_gatt_dsc_def[])
                 { {
                         .uuid = BLE_UUID16_DECLARE(0x2904),
                         .att_flags = BLE_ATT_F_READ,
-                        .access_cb = gatt_svr_att_access_presentation_format,
+                        .access_cb = gatt_svr_att_access_format_ac_freq,
                     }, {
                         0,
                     }
-
                 },
             }, {
                 /* Characteristic: TRIAC duty cycle */
                 .uuid = BLE_UUID128_DECLARE(GATT_RS_DUTY_UUID),
-                .access_cb = gatt_svr_chr_access_reflow,
+                .access_cb = gatt_svr_chr_access_rs_duty,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
             }, {
                 0, /* No more characteristics in this service */
@@ -127,51 +155,13 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
 };
 
 static int
-gatt_svr_chr_access_reflow(uint16_t conn_handle, uint16_t attr_handle,
+gatt_svr_chr_access_rs_temperature(uint16_t conn_handle, uint16_t attr_handle,
                                 struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    ble_uuid_t *uuid = ctxt->chr->uuid;
-    int rc;
+    const ble_uuid_t *uuid = ctxt->chr->uuid;
 
-    if (ble_uuid_cmp(uuid, BLE_UUID128_DECLARE(GATT_RS_PERIOD_UUID)) == 0) {
-        uint32_t pval = 0;//atomic_load(&period);
-        rc = os_mbuf_append(ctxt->om, &pval, 4);
-        return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
-    }
-    if (ble_uuid_cmp(uuid, BLE_UUID128_DECLARE(GATT_RS_PROFILE_UUID)) == 0) {
+    if (ble_uuid_cmp(uuid, BLE_UUID128_DECLARE(GATT_RS_TEMPERATURE_UUID)) == 0) {
         switch (ctxt->op) {
-        case BLE_GATT_ACCESS_OP_WRITE_CHR:
-            ;
-            uint16_t profile[10];
-            uint16_t profile_len;
-            rc = gatt_svr_chr_write(ctxt->om,
-                                    2,
-                                    sizeof profile,
-                                    &profile, &profile_len);
-            ESP_LOG_BUFFER_HEX_LEVEL(tag, profile, profile_len, ESP_LOG_INFO);
-            return rc;
-        default:
-            assert(0);
-            return BLE_ATT_ERR_UNLIKELY;
-        }
-    }
-    if (ble_uuid_cmp(uuid, BLE_UUID128_DECLARE(GATT_RS_DUTY_UUID)) == 0) {
-        uint32_t pulse;
-        switch (ctxt->op) {
-        case BLE_GATT_ACCESS_OP_READ_CHR:
-            pulse = 0;// atomic_load(&pulse_duration);
-            rc = os_mbuf_append(ctxt->om, &pulse,
-                                sizeof pulse);
-            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
-
-        case BLE_GATT_ACCESS_OP_WRITE_CHR:
-            rc = gatt_svr_chr_write(ctxt->om,
-                                    sizeof pulse,
-                                    sizeof pulse,
-                                    &pulse, NULL);
-            // atomic_store(&pulse_duration, pulse);
-            return rc;
-
         default:
             assert(0);
             return BLE_ATT_ERR_UNLIKELY;
@@ -180,6 +170,104 @@ gatt_svr_chr_access_reflow(uint16_t conn_handle, uint16_t attr_handle,
 
     assert(0);
     return BLE_ATT_ERR_UNLIKELY;
+}
+
+static int
+gatt_svr_chr_access_rs_target(uint16_t conn_handle, uint16_t attr_handle,
+                                    struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    int16_t target;
+    int rc;
+
+    switch (ctxt->op) {
+    case BLE_GATT_ACCESS_OP_READ_CHR:
+        target = atomic_load(&ato_target) * 10;
+        rc = os_mbuf_append(ctxt->om, &target,
+                            sizeof target);
+        return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+
+    case BLE_GATT_ACCESS_OP_WRITE_CHR:
+        rc = gatt_svr_chr_write(ctxt->om,
+                                sizeof target,
+                                sizeof target,
+                                &target, NULL);
+        atomic_store(&ato_target, target / 10);
+        return rc;
+
+    default:
+        assert(0);
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+}
+
+static int
+gatt_svr_chr_access_rs_profile(uint16_t conn_handle, uint16_t attr_handle,
+                                    struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    static reflow_profile_t profile;
+    uint16_t profile_len;
+    int rc;
+
+    switch (ctxt->op) {
+    case BLE_GATT_ACCESS_OP_WRITE_CHR:
+        memset(&profile, 0, sizeof(profile));
+        rc = gatt_svr_chr_write(ctxt->om,
+                                2,
+                                sizeof profile,
+                                &profile.data, &profile_len);
+
+        ESP_LOG_BUFFER_HEX_LEVEL(tag, profile.data, profile_len, ESP_LOG_INFO);
+        for (int step = 0; step < MAX_REFLOW_STEPS; step++) {
+            ESP_LOGI(tag, "%i °C for %i s", profile.data[step].temperature, profile.data[step].duration);
+        }
+
+        return rc;
+
+    default:
+        assert(0);
+        return BLE_ATT_ERR_UNLIKELY;
+    }
+}
+
+static int
+gatt_svr_chr_access_rs_ac_freq(uint16_t conn_handle, uint16_t attr_handle,
+                                    struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    int rc;
+
+    uint16_t half_ac_freq = atomic_load(&ato_half_ac_freq);
+    rc = os_mbuf_append(ctxt->om, &half_ac_freq, sizeof half_ac_freq);
+    return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
+static int
+gatt_svr_chr_access_rs_duty(uint16_t conn_handle, uint16_t attr_handle,
+                                    struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    int rc;
+
+    uint32_t pulse_delay;
+    switch (ctxt->op) {
+#ifndef CONFIG_ZERO_CROSSING_DRIVER
+    case BLE_GATT_ACCESS_OP_READ_CHR:
+        atomic_load(&ato_pulse_delay);
+        rc = os_mbuf_append(ctxt->om, &pulse_delay,
+                            sizeof pulse_delay);
+        return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+
+    case BLE_GATT_ACCESS_OP_WRITE_CHR:
+        rc = gatt_svr_chr_write(ctxt->om,
+                                sizeof pulse_delay,
+                                sizeof pulse_delay,
+                                &pulse_delay, NULL);
+        atomic_store(&ato_pulse_delay, pulse_delay);
+        return rc;
+#endif
+
+    default:
+        assert(0);
+        return BLE_ATT_ERR_UNLIKELY;
+    }
 }
 
 static int
@@ -206,19 +294,32 @@ gatt_svr_chr_access_device_info(uint16_t conn_handle, uint16_t attr_handle,
 }
 
 static int
-gatt_svr_att_access_presentation_format(uint16_t conn_handle,
-                                     uint16_t attr_handle,
-                                     struct ble_gatt_access_ctxt *ctxt,
-                                     void *arg)
+gatt_svr_att_access_format_target(uint16_t conn_handle, uint16_t attr_handle,
+                                struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
     int rc;
-    ble2904_data_t period_dsc = {
-	    .format = 6,
-	    .exponent = 2,
-	    .unit = 0x2722,
-	    .namespace = 1, // 1 = Bluetooth SIG Assigned Numbers
+    ble2904_data_t ble2904 = {
+        .format = 0x0E,
+        .exponent = -1,
+        .unit = 0x272F,
+        .namespace = 1, // 1 = Bluetooth SIG Assigned Numbers
     };
-    rc = os_mbuf_append(ctxt->om, &period_dsc, sizeof(period_dsc));
+    rc = os_mbuf_append(ctxt->om, &ble2904, sizeof(ble2904));
+    return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+}
+
+static int
+gatt_svr_att_access_format_ac_freq(uint16_t conn_handle, uint16_t attr_handle,
+                                struct ble_gatt_access_ctxt *ctxt, void *arg)
+{
+    int rc;
+    ble2904_data_t ble2904 = {
+        .format = 0x06,
+        .exponent = -2,
+        .unit = 0x2722,
+        .namespace = 1, // 1 = Bluetooth SIG Assigned Numbers
+    };
+    rc = os_mbuf_append(ctxt->om, &ble2904, sizeof(ble2904));
     return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
 
@@ -279,8 +380,8 @@ gatt_svr_init(void)
 {
     int rc;
 
-    // ble_svc_gap_init();
-    // ble_svc_gatt_init();
+    ble_svc_gap_init();
+    ble_svc_gatt_init();
 
     rc = ble_gatts_count_cfg(gatt_svr_svcs);
     if (rc != 0) {
