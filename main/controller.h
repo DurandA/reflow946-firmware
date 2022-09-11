@@ -6,6 +6,9 @@
 
 extern atomic_int ato_target;
 extern atomic_uint ato_half_ac_freq;
+#ifndef CONFIG_ZERO_CROSSING_DRIVER
+extern atomic_uint ato_pulse_delay;
+#endif
 
 #define MAX_REFLOW_STEPS 5 // can fit in any BLE packet
 

@@ -9,8 +9,10 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "driver/pcnt.h"
+#ifndef CONFIG_ZERO_CROSSING_DRIVER
 #include "driver/rmt.h"
-// #include "bler946.h"
+#endif
+#include "bler946.h"
 #include "controller.h"
 #include "max31855.h"
 #include "ui.h"
@@ -27,7 +29,9 @@ static const char *tag = "Controller";
 #define GPIO_OUTPUT_OPTOCOUPLER 33
 #define ESP_INTR_FLAG_DEFAULT 0
 
-static atomic_int temperature;
+extern uint8_t temprature_sens_read();
+
+static atomic_int ato_temperature;
 atomic_int ato_target;
 atomic_uint ato_half_ac_freq;
 
@@ -40,7 +44,7 @@ static TaskHandle_t firing_handle;
 static rmt_config_t firing_conf;
 static rmt_item32_t firing_pulse;
 
-static atomic_uint pulse_delay;
+static atomic_uint ato_pulse_delay;
 
 static void IRAM_ATTR zerocross_isr_handler() {
     static unsigned long last_time = 0;
@@ -66,14 +70,14 @@ void firing_task(void *param) {
         xTaskNotifyWait(0, ULONG_MAX, &isr_time, portMAX_DELAY);
         uint32_t elapsed_time = esp_timer_get_time() - isr_time;
 
-        firing_pulse.duration0 = atomic_load(&pulse_delay);
+        firing_pulse.duration0 = atomic_load(&ato_pulse_delay);
         ESP_ERROR_CHECK(rmt_write_items(firing_conf.channel, &firing_pulse, 1, 0));
     }
 }
 #endif // !CONFIG_ZERO_CROSSING_DRIVER
 
 int get_temperature() {
-    return atomic_load(&temperature);
+    return atomic_load(&ato_temperature);
 }
 
 void set_target_temperature(int value) {
@@ -172,10 +176,11 @@ void controller_task(void *param) {
         max31855_read(*spi, &data);
         // LSB = 0.25 degrees C
         int centigrade = data.thermocouple_temp >> 2;
-        atomic_store(&temperature, centigrade);
+        atomic_store(&ato_temperature, centigrade);
         ui_display_temperature();
         int target = atomic_load(&ato_target);
         ESP_LOGD(tag, "Temperature: %i (target: %i)", centigrade, target);
+        ESP_LOGD(tag, "Internal temperature: %i", temprature_sens_read());
 
 #ifdef CONFIG_ZERO_CROSSING_DRIVER
         if (centigrade < target) {
@@ -186,9 +191,9 @@ void controller_task(void *param) {
 #else
         if (centigrade < target) {
             // pulse_delay should be clamped between 1400 and 9600 @ 100Hz
-            atomic_store(&pulse_delay, 1400);
+            atomic_store(&ato_pulse_delay, 1400);
         } else {
-            atomic_store(&pulse_delay, 0);
+            atomic_store(&ato_pulse_delay, 0);
         }
 #endif
         // bler_tx_temperature(centigrade);
@@ -255,7 +260,7 @@ static void pcnt_ac_init()
 }
 
 void controller_init (void) {
-    atomic_init(&temperature, 0);
+    atomic_init(&ato_temperature, 0);
     atomic_init(&ato_target, 25);
     atomic_init(&ato_half_ac_freq, 0);
 
@@ -266,6 +271,8 @@ void controller_init (void) {
     opto_io.mode = GPIO_MODE_OUTPUT;
     gpio_config(&opto_io);
 #else
+    atomic_init(&ato_pulse_delay, 0);
+
     gpio_config_t io_conf = {0};
     io_conf.intr_type = GPIO_INTR_NEGEDGE;
     io_conf.pin_bit_mask = 1ULL<<GPIO_INPUT_ZEROCROSS;
@@ -290,7 +297,5 @@ void controller_init (void) {
     firing_pulse.level0 = 0;
     firing_pulse.duration1 = 100; // pulse duration
     firing_pulse.level1 = 1;
-
-    atomic_init(&pulse_delay, 0);
 #endif
 }
