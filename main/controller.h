@@ -27,7 +27,8 @@ void reflow_stop(void);
 bool reflow_is_running(void);
 
 void store_profile(reflow_profile_t *profile);
-esp_err_t load_profile(void);
+esp_err_t load_profile(reflow_profile_t *profile);
+reflow_profile_t * get_profile(void);
 void set_profile(reflow_profile_t *profile);
 
 int get_temperature();

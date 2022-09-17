@@ -29,8 +29,6 @@ static const char *tag = "Controller";
 #define GPIO_OUTPUT_OPTOCOUPLER 33
 #define ESP_INTR_FLAG_DEFAULT 0
 
-extern uint8_t temprature_sens_read();
-
 static atomic_int ato_temperature;
 atomic_int ato_target;
 atomic_uint ato_half_ac_freq;
@@ -136,13 +134,13 @@ bool reflow_is_running() {
     return reflow_handle != NULL;
 }
 
-void store_profile(reflow_profile_t *reflow_profile) {
+void store_profile(reflow_profile_t *profile) {
     nvs_handle_t my_handle;
     esp_err_t err;
 
     err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &my_handle);
     ESP_ERROR_CHECK(err);
-    err = nvs_set_blob(my_handle, "reflow_profile", reflow_profile, sizeof(reflow_profile_t));
+    err = nvs_set_blob(my_handle, "reflow_profile", profile, sizeof(reflow_profile_t));
     ESP_ERROR_CHECK(err);
     err = nvs_commit(my_handle);
     ESP_ERROR_CHECK(err);
@@ -150,14 +148,14 @@ void store_profile(reflow_profile_t *reflow_profile) {
     nvs_close(my_handle);
 }
 
-esp_err_t load_profile() {
+esp_err_t load_profile(reflow_profile_t *profile) {
     nvs_handle_t my_handle;
     esp_err_t err;
 
-    err = nvs_open(STORAGE_NAMESPACE, NVS_READONLY, &my_handle);
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &my_handle);
     ESP_ERROR_CHECK(err);
-    size_t required_size = sizeof(reflow_profile); // value will default to 0, if not set yet in NVS
-    err = nvs_get_blob(my_handle, "reflow_profile", &reflow_profile, &required_size);
+    size_t required_size = sizeof(reflow_profile_t); // value will default to 0, if not set yet in NVS
+    err = nvs_get_blob(my_handle, "reflow_profile", profile, &required_size);
 
     nvs_close(my_handle);
     return err;
@@ -165,6 +163,10 @@ esp_err_t load_profile() {
 
 void set_profile(reflow_profile_t *profile) {
     memcpy(&reflow_profile, profile, sizeof(reflow_profile));
+}
+
+reflow_profile_t * get_profile(void) {
+    return &reflow_profile;
 }
 
 void controller_task(void *param) {
@@ -180,7 +182,6 @@ void controller_task(void *param) {
         ui_display_temperature();
         int target = atomic_load(&ato_target);
         ESP_LOGD(tag, "Temperature: %i (target: %i)", centigrade, target);
-        ESP_LOGD(tag, "Internal temperature: %i", temprature_sens_read());
 
 #ifdef CONFIG_ZERO_CROSSING_DRIVER
         if (centigrade < target) {

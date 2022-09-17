@@ -41,7 +41,7 @@ static bool notify_state;
 
 static uint16_t conn_handle;
 
-static const char *device_name = "reflow946_controller_1.0";
+static const char *device_name = "reflow946_1.0";
 
 static int bler_gap_event(struct ble_gap_event *event, void *arg);
 
@@ -243,9 +243,10 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    ret = load_profile();
+    reflow_profile_t reflow_profile;
+    ret = load_profile(&reflow_profile);
     if (ret == ESP_ERR_NVS_NOT_FOUND) {
-        reflow_profile_t reflow_profile = (reflow_profile_t){
+        reflow_profile = (reflow_profile_t){
             .data = {
                 {.duration = 90, .temperature = 170},
                 {.duration = 90, .temperature = 217},
@@ -254,10 +255,10 @@ void app_main(void)
                 { 0 }
             }
         };
-        set_profile(&reflow_profile);
     } else {
         ESP_ERROR_CHECK(ret);
     }
+    set_profile(&reflow_profile);
 
     nimble_port_init();
     /* Initialize the NimBLE host configuration */
