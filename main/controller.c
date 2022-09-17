@@ -86,6 +86,7 @@ void reflow_task(void *param) {
     const TickType_t xDelay = 1000 / portTICK_PERIOD_MS;
 
     /* Switch UI mode to reflow */
+    int dp_lvl = 1;
     set_dp(1);
 
     for (int step = 0; step < MAX_REFLOW_STEPS; step++) {        
@@ -94,6 +95,8 @@ void reflow_task(void *param) {
 
         while (get_temperature() < reflow_profile.data[step].temperature) {
             vTaskDelay(xDelay);
+            dp_lvl = !dp_lvl;
+            set_dp(dp_lvl);
         }
 
         ESP_LOGI(tag, "Keeping temperature to %i for %i s", reflow_profile.data[step].temperature, reflow_profile.data[step].duration);
@@ -105,6 +108,8 @@ void reflow_task(void *param) {
                 break;
 
             vTaskDelay(xDelay);
+            dp_lvl = !dp_lvl;
+            set_dp(dp_lvl);
         }
     }
     set_target_temperature(25);

@@ -35,6 +35,7 @@ static const char* tag = "GATT server";
 static const char *manuf_name = "Reflow946";
 static const char *model_num = "Reflow946 ESP32 controller";
 uint16_t rs_temperature_handle;
+extern uint8_t temprature_sens_read();
 
 static int
 gatt_svr_chr_access_rs_temperature(uint16_t conn_handle, uint16_t attr_handle,
@@ -61,6 +62,10 @@ gatt_svr_chr_access_device_info(uint16_t conn_handle, uint16_t attr_handle,
                                 struct ble_gatt_access_ctxt *ctxt, void *arg);
 
 static int
+gatt_svr_chr_access_temperature_celcius(uint16_t conn_handle, uint16_t attr_handle,
+                                struct ble_gatt_access_ctxt *ctxt, void *arg);
+
+static int
 gatt_svr_att_access_format_ac_freq(uint16_t conn_handle, uint16_t attr_handle,
                                 struct ble_gatt_access_ctxt *ctxt, void *arg);
 
@@ -80,10 +85,19 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
         .characteristics = (struct ble_gatt_chr_def[])
         { {
                 /* Characteristic: Tempeature measurement */
-                .uuid = BLE_UUID16_DECLARE(GATT_RS_TEMPERATURE_UUID),
+                .uuid = BLE_UUID128_DECLARE(GATT_RS_TEMPERATURE_UUID),
                 .access_cb = gatt_svr_chr_access_rs_temperature,
                 .val_handle = &rs_temperature_handle,
                 .flags = BLE_GATT_CHR_F_NOTIFY,
+                .descriptors = (struct ble_gatt_dsc_def[])
+                { {
+                        .uuid = BLE_UUID16_DECLARE(0x2904),
+                        .att_flags = BLE_ATT_F_READ,
+                        .access_cb = gatt_svr_att_access_format_target,
+                    }, {
+                        0,
+                    }
+                },
             }, {
                 /* Characteristic: Temperature control */
                 .uuid = BLE_UUID128_DECLARE(GATT_RS_TARGET_UUID),
@@ -102,7 +116,12 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
                 /* Characteristic: Reflow profile */
                 .uuid = BLE_UUID128_DECLARE(GATT_RS_PROFILE_UUID),
                 .access_cb = gatt_svr_chr_access_rs_profile,
-                .flags = BLE_GATT_CHR_F_WRITE,
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
+            }, {
+                /* Characteristic: NVS Reflow profile */
+                .uuid = BLE_UUID128_DECLARE(GATT_RS_NVS_PROFILE_UUID),
+                .access_cb = gatt_svr_chr_access_rs_profile,
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
             }, {
                 /* Characteristic: AC half period */
                 .uuid = BLE_UUID128_DECLARE(GATT_RS_AC_HALF_FREQ_UUID),
@@ -141,6 +160,11 @@ static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
             }, {
                 /* Characteristic: Model number string */
                 .uuid = BLE_UUID16_DECLARE(GATT_MODEL_NUMBER_UUID),
+                .access_cb = gatt_svr_chr_access_device_info,
+                .flags = BLE_GATT_CHR_F_READ,
+            }, {
+                /* Characteristic: Temperature celcius */
+                .uuid = BLE_UUID16_DECLARE(GATT_TEMPERATURE_CELCIUS_UUID),
                 .access_cb = gatt_svr_chr_access_device_info,
                 .flags = BLE_GATT_CHR_F_READ,
             }, {
@@ -191,6 +215,7 @@ gatt_svr_chr_access_rs_target(uint16_t conn_handle, uint16_t attr_handle,
                                 sizeof target,
                                 sizeof target,
                                 &target, NULL);
+        reflow_stop();
         atomic_store(&ato_target, target / 10);
         return rc;
 
@@ -204,13 +229,24 @@ static int
 gatt_svr_chr_access_rs_profile(uint16_t conn_handle, uint16_t attr_handle,
                                     struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    static reflow_profile_t profile;
+    ble_uuid_t *uuid = ctxt->chr->uuid;
+    reflow_profile_t profile = {0};
+    reflow_profile_t *p_profile = &profile;
     uint16_t profile_len;
     int rc;
 
     switch (ctxt->op) {
+    case BLE_GATT_ACCESS_OP_READ_CHR:
+        if (ble_uuid_cmp(uuid, BLE_UUID128_DECLARE(GATT_RS_NVS_PROFILE_UUID)) == 0) {
+            load_profile(&profile);
+        } else {
+            p_profile = get_profile;
+        }
+        rc = os_mbuf_append(ctxt->om, p_profile,
+                            sizeof(reflow_profile_t));
+        return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+
     case BLE_GATT_ACCESS_OP_WRITE_CHR:
-        memset(&profile, 0, sizeof(profile));
         rc = gatt_svr_chr_write(ctxt->om,
                                 2,
                                 sizeof profile,
@@ -221,6 +257,12 @@ gatt_svr_chr_access_rs_profile(uint16_t conn_handle, uint16_t attr_handle,
             ESP_LOGI(tag, "%i °C for %i s", profile.data[step].temperature, profile.data[step].duration);
         }
 
+        set_profile(&profile);
+        if (ble_uuid_cmp(uuid, BLE_UUID128_DECLARE(GATT_RS_NVS_PROFILE_UUID)) == 0) {
+            store_profile(&profile);
+        } else {
+            reflow_start();
+        }
         return rc;
 
     default:
@@ -286,6 +328,12 @@ gatt_svr_chr_access_device_info(uint16_t conn_handle, uint16_t attr_handle,
 
     if (uuid == GATT_MANUFACTURER_NAME_UUID) {
         rc = os_mbuf_append(ctxt->om, manuf_name, strlen(manuf_name));
+        return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+    }
+
+    if (uuid == GATT_TEMPERATURE_CELCIUS_UUID) {
+        int16_t temperature = ((temprature_sens_read() - 32) / 1.8) * 10;
+        rc = os_mbuf_append(ctxt->om, &temperature, sizeof temperature);
         return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
     }
 
